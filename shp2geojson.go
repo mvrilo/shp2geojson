@@ -8,21 +8,23 @@ import (
 	"github.com/paulmach/go.geojson"
 )
 
-// Convert shapefile to geojson
+type shapeReader interface {
+	Next() bool
+	Fields() []shp.Field
+	Shape() (int, shp.Shape)
+	Attribute(int) string
+	Close() error
+}
+
 // currently not support Multi Geometry
-func Convert(input string) ([]byte, error) {
-	shape, err := shp.Open(input)
-	if err != nil {
-		return nil, err
-	}
+func convert(shape shapeReader) ([]byte, error) {
 	defer shape.Close()
 
-	// fields from the attribute table (DBF)
-	fields := shape.Fields()
 	fc := geojson.NewFeatureCollection()
-	// loop through all features in the shapefile
+	fields := shape.Fields()
+
 	for shape.Next() {
-		n, s := shape.Shape()
+		_, s := shape.Shape()
 		var feature *geojson.Feature
 
 		switch s.(type) {
@@ -73,7 +75,7 @@ func Convert(input string) ([]byte, error) {
 		}
 
 		for k, f := range fields {
-			val := shape.ReadAttribute(n, k)
+			val := shape.Attribute(k)
 			feature.Properties[f.String()] = val
 		}
 		fc.AddFeature(feature)
@@ -83,5 +85,26 @@ func Convert(input string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	return rawJSON, nil
+}
+
+// Convert shapefile to geojson
+func Convert(input string) ([]byte, error) {
+	shape, err := shp.Open(input)
+	if err != nil {
+		return nil, err
+	}
+
+	return convert(shape)
+}
+
+// ConvertZip extracts and convert shapefiles in a zip to geojson
+func ConvertZip(input string) ([]byte, error) {
+	shape, err := shp.OpenZip(input)
+	if err != nil {
+		return nil, err
+	}
+
+	return convert(shape)
 }
